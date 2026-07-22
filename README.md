@@ -95,7 +95,7 @@ Jika folder ini belum jadi git repository:
 
 ```bash
 cd gallery-project
-
+git init
 git add .
 git commit -m "Initial commit: 3D gallery photography project"
 ```
