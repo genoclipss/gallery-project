@@ -1,5 +1,8 @@
 import InfiniteGallery from "@/components/ui/3d-gallery-photography";
 
+// Prefix wajib supaya path gambar benar walau di-deploy di subfolder GitHub Pages
+const asset = (path: string) => `${import.meta.env.BASE_URL}${path}`;
+
 export default function DemoOne() {
 	const sampleImages = [
 	{ src: "/foto (1).jepg", alt: "Foto (1).jepg" },
