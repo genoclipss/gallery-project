@@ -45,6 +45,7 @@ interface BlurSettings {
 interface InfiniteGalleryProps {
 	images: ImageItem[];
 	speed?: number;
+	keyboardStep?: number;
 	zSpacing?: number;
 	visibleCount?: number;
 	falloff?: { near: number; far: number };
@@ -320,6 +321,7 @@ function ImagePlane({
 function GalleryScene({
 	images,
 	speed = 1,
+	keyboardStep = 2,
 	visibleCount = 8,
 	fadeSettings = {
 		fadeIn: { start: 0.05, end: 0.15 },
@@ -421,16 +423,16 @@ function GalleryScene({
 	const handleKeyDown = useCallback(
 		(event: KeyboardEvent) => {
 			if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-				setScrollVelocity((prev) => prev - 2 * speed);
+				setScrollVelocity((prev) => prev - keyboardStep * speed);
 				setAutoPlay(false);
 				lastInteraction.current = Date.now();
 			} else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-				setScrollVelocity((prev) => prev + 2 * speed);
+				setScrollVelocity((prev) => prev + keyboardStep * speed);
 				setAutoPlay(false);
 				lastInteraction.current = Date.now();
 			}
 		},
-		[speed]
+		[speed, keyboardStep]
 	);
 
 	// Handle single click / tap -> toggle pause/unpause
@@ -746,6 +748,9 @@ function FallbackGallery({ images }: { images: ImageItem[] }) {
 
 export default function InfiniteGallery({
 	images,
+	speed = 1,
+	keyboardStep = 2,
+	visibleCount = 8,
 	className = 'h-96 w-full',
 	style,
 	fadeSettings = {
@@ -793,6 +798,9 @@ export default function InfiniteGallery({
 			>
 				<GalleryScene
 					images={images}
+					speed={speed}
+					keyboardStep={keyboardStep}
+					visibleCount={visibleCount}
 					fadeSettings={fadeSettings}
 					blurSettings={blurSettings}
 				/>
