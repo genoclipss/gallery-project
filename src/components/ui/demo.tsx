@@ -5,13 +5,13 @@ const asset = (path: string) => `${import.meta.env.BASE_URL}${path}`;
 
 export default function DemoOne() {
 	const sampleImages = [
-	{ src: "/foto (1).jepg", alt: "Foto (1).jepg" },
-	{ src: "/foto (2).jepg", alt: "Foto (2).jepg" },
-	{ src: "/foto (3).jepg", alt: "Foto (3).jepg" },
-	{ src: "/foto (4).jepg", alt: "Foto (4).jepg" },
-	{ src: "/foto (5).jepg", alt: "Foto (5).jepg" },
-	{ src: "/foto (6).jepg", alt: "Foto (6).jepg" },
-	{ src: "/foto (7).jepg", alt: "Foto (7).jepg" },	
+	{ src: asset("foto (1).jpeg"), alt: "Foto 1" },
+	{ src: asset("foto (2).jpeg"), alt: "Foto 2" },
+	{ src: asset("foto (3).jpeg"), alt: "Foto 3" },
+	{ src: asset("foto (4).jpeg"), alt: "Foto 4" },
+	{ src: asset("foto (5).jpeg"), alt: "Foto 5" },
+	{ src: asset("foto (6).jpeg"), alt: "Foto 6" },
+	{ src: asset("foto (7).jpeg"), alt: "Foto 7" },
 ];
 
 	return (
