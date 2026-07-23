@@ -204,6 +204,7 @@ function GalleryScene({
 }: Omit<InfiniteGalleryProps, 'className' | 'style'>) {
 	const [scrollVelocity, setScrollVelocity] = useState(0);
 	const [autoPlay, setAutoPlay] = useState(true);
+	const [isPaused, setIsPaused] = useState(false);
 	const lastInteraction = useRef(Date.now());
 
 	const normalizedImages = useMemo(
@@ -301,18 +302,73 @@ function GalleryScene({
 		[speed]
 	);
 
+	// Handle single click / tap -> toggle pause/unpause
+	const handleTogglePause = useCallback(() => {
+		setIsPaused((prev) => !prev);
+	}, []);
+
 	useEffect(() => {
 		const canvas = document.querySelector('canvas');
-		if (canvas) {
-			canvas.addEventListener('wheel', handleWheel, { passive: false });
-			document.addEventListener('keydown', handleKeyDown);
+		if (!canvas) return;
 
-			return () => {
-				canvas.removeEventListener('wheel', handleWheel);
-				document.removeEventListener('keydown', handleKeyDown);
-			};
-		}
-	}, [handleWheel, handleKeyDown]);
+		// Prevent the page itself from scrolling when dragging on the canvas (mobile)
+		canvas.style.touchAction = 'none';
+
+		let touchStartX = 0;
+		let touchStartY = 0;
+		let touchLastY = 0;
+		let isDragging = false;
+		const DRAG_THRESHOLD = 10; // px of movement before it counts as a drag, not a tap
+
+		const handleTouchStart = (event: TouchEvent) => {
+			const touch = event.touches[0];
+			touchStartX = touch.clientX;
+			touchStartY = touch.clientY;
+			touchLastY = touch.clientY;
+			isDragging = false;
+		};
+
+		const handleTouchMove = (event: TouchEvent) => {
+			event.preventDefault();
+			const touch = event.touches[0];
+			const deltaY = touchLastY - touch.clientY;
+			const movedX = Math.abs(touch.clientX - touchStartX);
+			const movedY = Math.abs(touch.clientY - touchStartY);
+
+			if (movedX > DRAG_THRESHOLD || movedY > DRAG_THRESHOLD) {
+				isDragging = true;
+			}
+
+			setScrollVelocity((prev) => prev + deltaY * 0.05 * speed);
+			setAutoPlay(false);
+			lastInteraction.current = Date.now();
+			touchLastY = touch.clientY;
+		};
+
+		const handleTouchEnd = () => {
+			// A tap (no meaningful movement) toggles pause/unpause on mobile
+			if (!isDragging) {
+				handleTogglePause();
+			}
+		};
+
+		canvas.addEventListener('wheel', handleWheel, { passive: false });
+		canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+		canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+		canvas.addEventListener('touchend', handleTouchEnd);
+		// A click toggles pause/unpause on desktop
+		canvas.addEventListener('click', handleTogglePause);
+		document.addEventListener('keydown', handleKeyDown);
+
+		return () => {
+			canvas.removeEventListener('wheel', handleWheel);
+			canvas.removeEventListener('touchstart', handleTouchStart);
+			canvas.removeEventListener('touchmove', handleTouchMove);
+			canvas.removeEventListener('touchend', handleTouchEnd);
+			canvas.removeEventListener('click', handleTogglePause);
+			document.removeEventListener('keydown', handleKeyDown);
+		};
+	}, [handleWheel, handleKeyDown, handleTogglePause, speed]);
 
 	// Auto-play logic
 	useEffect(() => {
@@ -325,8 +381,8 @@ function GalleryScene({
 	}, []);
 
 	useFrame((state, delta) => {
-		// Apply auto-play
-		if (autoPlay) {
+		// Apply auto-play (skipped entirely while manually paused)
+		if (autoPlay && !isPaused) {
 			setScrollVelocity((prev) => prev + 0.3 * delta);
 		}
 
@@ -552,7 +608,7 @@ export default function InfiniteGallery({
 	}
 
 	return (
-		<div className={className} style={style}>
+		<div className={className} style={{ ...style, touchAction: 'none' }}>
 			<Canvas
 				camera={{ position: [0, 0, 0], fov: 55 }}
 				gl={{ antialias: true, alpha: true }}
