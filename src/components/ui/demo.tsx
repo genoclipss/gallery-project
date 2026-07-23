@@ -12,6 +12,19 @@ export default function DemoOne() {
 	{ src: asset("foto (5).jpeg"), alt: "Foto 5" },
 	{ src: asset("foto (6).jpeg"), alt: "Foto 6" },
 	{ src: asset("foto (7).jpeg"), alt: "Foto 7" },
+	{ src: asset("foto (8).jpeg"), alt: "Foto 8" },
+	{ src: asset("foto (9).jpeg"), alt: "Foto 9" },
+	{ src: asset("foto (10).jpeg"), alt: "Foto 10" },
+	{ src: asset("foto (11).jpeg"), alt: "Foto 11" },
+	{ src: asset("foto (12).jpeg"), alt: "Foto 12" },
+	{ src: asset("foto (13).jpeg"), alt: "Foto 13" },
+	{ src: asset("foto (14).jpeg"), alt: "Foto 14" },
+	{ src: asset("foto (15).jpeg"), alt: "Foto 15" },
+	{ src: asset("foto (16).jpeg"), alt: "Foto 16" },
+	{ src: asset("foto (17).jpeg"), alt: "Foto 17" },
+	{ src: asset("foto (18).jpeg"), alt: "Foto 18" },
+	{ src: asset("video (1).mp4"), alt: "Video 1" },
+	{ src: asset("video (2).mp4"), alt: "Video 2" },
 ];
 
 	return (
