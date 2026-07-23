@@ -30,13 +30,14 @@ export default function DemoOne() {
 	return (
 		<main className="min-h-screen h-full w-full">
 			<InfiniteGallery
-				images={sampleImages}
-				speed={1.2}
-				zSpacing={3}
-				visibleCount={12}
-				falloff={{ near: 0.8, far: 14 }}
-				className="h-screen w-full rounded-lg overflow-hidden"
-			/>
+			images={sampleImages}
+			speed={1.2}
+			keyboardStep={1}
+			zSpacing={3}
+			visibleCount={12}
+			falloff={{ near: 0.8, far: 14 }}
+			className="h-screen w-full rounded-lg overflow-hidden"
+		/>
 			<div className="h-screen inset-0 pointer-events-none fixed flex items-center justify-center text-center px-3 mix-blend-exclusion text-white">
 				<h1 className="font-serif text-4xl md:text-7xl tracking-tight">
 					<span className="italic">Tribun Timur</span>
