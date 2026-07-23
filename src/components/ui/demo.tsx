@@ -32,7 +32,7 @@ export default function DemoOne() {
 			<InfiniteGallery
 			images={sampleImages}
 			speed={1.2}
-			keyboardStep={1}
+			keyboardStep={0.5}
 			zSpacing={3}
 			visibleCount={12}
 			falloff={{ near: 0.8, far: 14 }}
