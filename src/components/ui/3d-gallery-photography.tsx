@@ -1,6 +1,7 @@
 import type React from 'react';
 import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ImageItem = string | { src: string; alt?: string; type?: 'image' | 'video' };
@@ -161,13 +162,14 @@ const createClothMaterial = () => {
 };
 
 // Loads a mix of image + video sources into THREE textures.
-// Videos autoplay/loop and stay in sync with the isMuted flag.
-function useMediaTextures(
-	items: { src: string; type: 'image' | 'video' }[],
-	isMuted: boolean
-) {
+// Each video gets its own independent mute state (default muted, since
+// browsers block unmuted autoplay until the user interacts with that video).
+function useMediaTextures(items: { src: string; type: 'image' | 'video' }[]) {
 	const [textures, setTextures] = useState<(THREE.Texture | null)[]>(() =>
 		items.map(() => null)
+	);
+	const [mutedMedia, setMutedMedia] = useState<boolean[]>(() =>
+		items.map(() => true)
 	);
 	const videosRef = useRef<(HTMLVideoElement | null)[]>([]);
 
@@ -177,18 +179,18 @@ function useMediaTextures(
 		const videos: (HTMLVideoElement | null)[] = items.map(() => null);
 
 		setTextures(items.map(() => null));
+		setMutedMedia(items.map(() => true));
 
 		items.forEach((item, i) => {
 			if (item.type === 'video') {
 				const video = document.createElement('video');
 				video.src = item.src;
 				video.loop = true;
-				video.muted = isMuted;
+				video.muted = true;
 				video.playsInline = true;
 				video.crossOrigin = 'anonymous';
 				video.play().catch(() => {
-					// Autoplay with sound can be blocked by the browser until
-					// the user interacts (e.g. taps the mute button).
+					// Autoplay can be blocked until the user interacts with this video.
 				});
 				videos[i] = video;
 
@@ -221,29 +223,36 @@ function useMediaTextures(
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [items]);
 
-	// Keep every video's mute state (and playback) in sync with the toggle
-	useEffect(() => {
-		videosRef.current.forEach((video) => {
-			if (!video) return;
-			video.muted = isMuted;
-			video.play().catch(() => {});
+	const toggleMuted = useCallback((index: number) => {
+		setMutedMedia((prev) => {
+			const next = [...prev];
+			next[index] = !next[index];
+			return next;
 		});
-	}, [isMuted]);
+	}, []);
 
-	return textures;
+	return { textures, videosRef, mutedMedia, toggleMuted };
 }
 
+
+const VISIBILITY_AUDIO_THRESHOLD = 0.6; // opacity above which a video is "visible enough" to be heard
 
 function ImagePlane({
 	texture,
 	position,
 	scale,
 	material,
+	video,
+	isMuted,
+	onToggleMute,
 }: {
 	texture: THREE.Texture;
 	position: [number, number, number];
 	scale: [number, number, number];
 	material: THREE.ShaderMaterial;
+	video?: HTMLVideoElement | null;
+	isMuted?: boolean;
+	onToggleMute?: () => void;
 }) {
 	const meshRef = useRef<THREE.Mesh>(null);
 	const [isHovered, setIsHovered] = useState(false);
@@ -260,6 +269,15 @@ function ImagePlane({
 		}
 	}, [material, isHovered]);
 
+	// Audio is only actually audible while this video is clearly visible
+	// (based on the same fade-opacity the shader is using) AND not muted.
+	useFrame(() => {
+		if (!video) return;
+		const opacity = material?.uniforms?.opacity?.value ?? 0;
+		const visibleEnough = opacity >= VISIBILITY_AUDIO_THRESHOLD;
+		video.muted = Boolean(isMuted) || !visibleEnough;
+	});
+
 	return (
 		<mesh
 			ref={meshRef}
@@ -270,6 +288,40 @@ function ImagePlane({
 			onPointerLeave={() => setIsHovered(false)}
 		>
 			<planeGeometry args={[1, 1, 32, 32]} />
+			{video && (
+				<Html
+					position={[0.42, -0.42, 0.01]}
+					center
+					occlude={false}
+					zIndexRange={[10, 0]}
+					style={{ pointerEvents: 'auto' }}
+				>
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onToggleMute?.();
+						}}
+						aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+						style={{
+							width: '2rem',
+							height: '2rem',
+							borderRadius: '9999px',
+							border: '1px solid rgba(0,0,0,0.15)',
+							background: 'rgba(255,255,255,0.85)',
+							backdropFilter: 'blur(4px)',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							fontSize: '0.9rem',
+							cursor: 'pointer',
+							boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+						}}
+					>
+						{isMuted ? '🔇' : '🔊'}
+					</button>
+				</Html>
+			)}
 		</mesh>
 	);
 }
@@ -278,7 +330,6 @@ function GalleryScene({
 	images,
 	speed = 1,
 	visibleCount = 8,
-	isMuted = true,
 	fadeSettings = {
 		fadeIn: { start: 0.05, end: 0.15 },
 		fadeOut: { start: 0.85, end: 0.95 },
@@ -288,7 +339,7 @@ function GalleryScene({
 		blurOut: { start: 0.9, end: 1.0 },
 		maxBlur: 3.0,
 	},
-}: Omit<InfiniteGalleryProps, 'className' | 'style'> & { isMuted?: boolean }) {
+}: Omit<InfiniteGalleryProps, 'className' | 'style'>) {
 	const [scrollVelocity, setScrollVelocity] = useState(0);
 	const [autoPlay, setAutoPlay] = useState(true);
 	const [isPaused, setIsPaused] = useState(false);
@@ -303,7 +354,8 @@ function GalleryScene({
 		[images]
 	);
 
-	const textures = useMediaTextures(normalizedImages, isMuted);
+	const { textures, videosRef, mutedMedia, toggleMuted } =
+		useMediaTextures(normalizedImages);
 
 	// Create materials pool
 	const materials = useMemo(
@@ -627,6 +679,9 @@ function GalleryScene({
 						position={[plane.x, plane.y, worldZ]} // Position planes relative to camera center
 						scale={scale}
 						material={material}
+						video={videosRef.current[plane.imageIndex] ?? null}
+						isMuted={mutedMedia[plane.imageIndex] ?? true}
+						onToggleMute={() => toggleMuted(plane.imageIndex)}
 					/>
 				);
 			})}
@@ -691,9 +746,6 @@ export default function InfiniteGallery({
 	},
 }: InfiniteGalleryProps) {
 	const [webglSupported, setWebglSupported] = useState(true);
-	// Videos start muted so autoplay isn't blocked by the browser;
-	// tapping the button is the user gesture that unlocks sound.
-	const [isMuted, setIsMuted] = useState(true);
 
 	useEffect(() => {
 		// Check WebGL support
@@ -730,38 +782,8 @@ export default function InfiniteGallery({
 					images={images}
 					fadeSettings={fadeSettings}
 					blurSettings={blurSettings}
-					isMuted={isMuted}
 				/>
 			</Canvas>
-
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					setIsMuted((prev) => !prev);
-				}}
-				aria-label={isMuted ? 'Unmute videos' : 'Mute videos'}
-				style={{
-					position: 'absolute',
-					bottom: '1rem',
-					right: '1rem',
-					zIndex: 10,
-					width: '2.75rem',
-					height: '2.75rem',
-					borderRadius: '9999px',
-					border: '1px solid rgba(0,0,0,0.15)',
-					background: 'rgba(255,255,255,0.85)',
-					backdropFilter: 'blur(6px)',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					fontSize: '1.1rem',
-					cursor: 'pointer',
-					boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
-				}}
-			>
-				{isMuted ? '🔇' : '🔊'}
-			</button>
 		</div>
 	);
 }
