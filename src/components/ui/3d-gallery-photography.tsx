@@ -269,15 +269,6 @@ function ImagePlane({
 		}
 	}, [material, isHovered]);
 
-	// Audio is only actually audible while this video is clearly visible
-	// (based on the same fade-opacity the shader is using) AND not muted.
-	useFrame(() => {
-		if (!video) return;
-		const opacity = material?.uniforms?.opacity?.value ?? 0;
-		const visibleEnough = opacity >= VISIBILITY_AUDIO_THRESHOLD;
-		video.muted = Boolean(isMuted) || !visibleEnough;
-	});
-
 	return (
 		<mesh
 			ref={meshRef}
@@ -544,6 +535,9 @@ function GalleryScene({
 		const totalRange = depthRange;
 		const halfRange = totalRange / 2;
 
+		let bestVideoOpacity = 0;
+		let bestVideoIndex: number | null = null;
+
 		planesData.current.forEach((plane, i) => {
 			let newZ = plane.z + scrollVelocity * delta * 10;
 			let wrapsForward = 0;
@@ -644,6 +638,25 @@ function GalleryScene({
 				material.uniforms.opacity.value = opacity;
 				material.uniforms.blurAmount.value = blur;
 			}
+
+			// Track the most visible video the user has unmuted, so we can
+			// make sure only ONE video plays sound at any given time.
+			if (
+				normalizedImages[plane.imageIndex]?.type === 'video' &&
+				mutedMedia[plane.imageIndex] === false &&
+				opacity > bestVideoOpacity
+			) {
+				bestVideoOpacity = opacity;
+				bestVideoIndex = plane.imageIndex;
+			}
+		});
+
+		// Silence every video except the single most-visible unmuted one.
+		const hasAudibleWinner =
+			bestVideoIndex !== null && bestVideoOpacity >= VISIBILITY_AUDIO_THRESHOLD;
+		videosRef.current.forEach((video, idx) => {
+			if (!video) return;
+			video.muted = !(hasAudibleWinner && idx === bestVideoIndex);
 		});
 	});
 
