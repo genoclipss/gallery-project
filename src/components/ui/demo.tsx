@@ -31,9 +31,9 @@ export default function DemoOne() {
 			</div>
 
 			<div className="text-center fixed bottom-10 left-0 right-0 font-mono uppercase text-[11px] font-semibold">
-				<p>Use mouse wheel, arrow keys, or touch to navigate</p>
+				<p>By: Tri Ahmad Fhatur Wahyu</p>
 				<p className=" opacity-60">
-					Auto-play resumes after 3 seconds of inactivity
+					Mahasiswa Magang UNM
 				</p>
 			</div>
 		</main>
