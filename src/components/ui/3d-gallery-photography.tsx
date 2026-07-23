@@ -1,10 +1,22 @@
 import type React from 'react';
 import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 
-type ImageItem = string | { src: string; alt?: string };
+type ImageItem = string | { src: string; alt?: string; type?: 'image' | 'video' };
+
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.m4v'];
+
+function detectMediaType(
+	src: string,
+	explicit?: 'image' | 'video'
+): 'image' | 'video' {
+	if (explicit) return explicit;
+	const clean = src.toLowerCase().split('?')[0].split('#')[0];
+	return VIDEO_EXTENSIONS.some((ext) => clean.endsWith(ext))
+		? 'video'
+		: 'image';
+}
 
 interface FadeSettings {
 	fadeIn: {
@@ -148,6 +160,80 @@ const createClothMaterial = () => {
 	});
 };
 
+// Loads a mix of image + video sources into THREE textures.
+// Videos autoplay/loop and stay in sync with the isMuted flag.
+function useMediaTextures(
+	items: { src: string; type: 'image' | 'video' }[],
+	isMuted: boolean
+) {
+	const [textures, setTextures] = useState<(THREE.Texture | null)[]>(() =>
+		items.map(() => null)
+	);
+	const videosRef = useRef<(HTMLVideoElement | null)[]>([]);
+
+	useEffect(() => {
+		let cancelled = false;
+		const loader = new THREE.TextureLoader();
+		const videos: (HTMLVideoElement | null)[] = items.map(() => null);
+
+		setTextures(items.map(() => null));
+
+		items.forEach((item, i) => {
+			if (item.type === 'video') {
+				const video = document.createElement('video');
+				video.src = item.src;
+				video.loop = true;
+				video.muted = isMuted;
+				video.playsInline = true;
+				video.crossOrigin = 'anonymous';
+				video.play().catch(() => {
+					// Autoplay with sound can be blocked by the browser until
+					// the user interacts (e.g. taps the mute button).
+				});
+				videos[i] = video;
+
+				const videoTexture = new THREE.VideoTexture(video);
+				videoTexture.colorSpace = THREE.SRGBColorSpace;
+				setTextures((prev) => {
+					const next = [...prev];
+					next[i] = videoTexture;
+					return next;
+				});
+			} else {
+				loader.load(item.src, (tex) => {
+					if (cancelled) return;
+					tex.colorSpace = THREE.SRGBColorSpace;
+					setTextures((prev) => {
+						const next = [...prev];
+						next[i] = tex;
+						return next;
+					});
+				});
+			}
+		});
+
+		videosRef.current = videos;
+
+		return () => {
+			cancelled = true;
+			videos.forEach((video) => video?.pause());
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [items]);
+
+	// Keep every video's mute state (and playback) in sync with the toggle
+	useEffect(() => {
+		videosRef.current.forEach((video) => {
+			if (!video) return;
+			video.muted = isMuted;
+			video.play().catch(() => {});
+		});
+	}, [isMuted]);
+
+	return textures;
+}
+
+
 function ImagePlane({
 	texture,
 	position,
@@ -192,6 +278,7 @@ function GalleryScene({
 	images,
 	speed = 1,
 	visibleCount = 8,
+	isMuted = true,
 	fadeSettings = {
 		fadeIn: { start: 0.05, end: 0.15 },
 		fadeOut: { start: 0.85, end: 0.95 },
@@ -201,7 +288,7 @@ function GalleryScene({
 		blurOut: { start: 0.9, end: 1.0 },
 		maxBlur: 3.0,
 	},
-}: Omit<InfiniteGalleryProps, 'className' | 'style'>) {
+}: Omit<InfiniteGalleryProps, 'className' | 'style'> & { isMuted?: boolean }) {
 	const [scrollVelocity, setScrollVelocity] = useState(0);
 	const [autoPlay, setAutoPlay] = useState(true);
 	const [isPaused, setIsPaused] = useState(false);
@@ -209,13 +296,14 @@ function GalleryScene({
 
 	const normalizedImages = useMemo(
 		() =>
-			images.map((img) =>
-				typeof img === 'string' ? { src: img, alt: '' } : img
-			),
+			images.map((img) => {
+				const item = typeof img === 'string' ? { src: img, alt: '' } : img;
+				return { ...item, type: detectMediaType(item.src, item.type) };
+			}),
 		[images]
 	);
 
-	const textures = useTexture(normalizedImages.map((img) => img.src));
+	const textures = useMediaTextures(normalizedImages, isMuted);
 
 	// Create materials pool
 	const materials = useMemo(
@@ -519,9 +607,15 @@ function GalleryScene({
 
 				const worldZ = plane.z - depthRange / 2;
 
-				// Calculate scale to maintain aspect ratio
-				const aspect = texture.image
-					? texture.image.width / texture.image.height
+				// Calculate scale to maintain aspect ratio (works for images and videos)
+				const media = texture.image as
+					| HTMLImageElement
+					| HTMLVideoElement
+					| undefined;
+				const aspect = media
+					? 'videoWidth' in media && media.videoWidth
+						? media.videoWidth / media.videoHeight
+						: media.width / media.height || 1
 					: 1;
 				const scale: [number, number, number] =
 					aspect > 1 ? [2 * aspect, 2, 1] : [2, 2 / aspect, 1];
@@ -544,26 +638,39 @@ function GalleryScene({
 function FallbackGallery({ images }: { images: ImageItem[] }) {
 	const normalizedImages = useMemo(
 		() =>
-			images.map((img) =>
-				typeof img === 'string' ? { src: img, alt: '' } : img
-			),
+			images.map((img) => {
+				const item = typeof img === 'string' ? { src: img, alt: '' } : img;
+				return { ...item, type: detectMediaType(item.src, item.type) };
+			}),
 		[images]
 	);
 
 	return (
-		<div className="flex flex-col items-center justify-center h-full bg-gray-100 p-4">
+		<div className="flex flex-col items-center justify-center h-full bg-white p-4">
 			<p className="text-gray-600 mb-4">
-				WebGL not supported. Showing image list:
+				WebGL not supported. Showing media list:
 			</p>
 			<div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-				{normalizedImages.map((img, i) => (
-					<img
-						key={i}
-						src={img.src || '/placeholder.svg'}
-						alt={img.alt}
-						className="w-full h-32 object-cover rounded"
-					/>
-				))}
+				{normalizedImages.map((img, i) =>
+					img.type === 'video' ? (
+						<video
+							key={i}
+							src={img.src}
+							className="w-full h-32 object-cover rounded"
+							muted
+							loop
+							playsInline
+							autoPlay
+						/>
+					) : (
+						<img
+							key={i}
+							src={img.src || '/placeholder.svg'}
+							alt={img.alt}
+							className="w-full h-32 object-cover rounded"
+						/>
+					)
+				)}
 			</div>
 		</div>
 	);
@@ -584,6 +691,9 @@ export default function InfiniteGallery({
 	},
 }: InfiniteGalleryProps) {
 	const [webglSupported, setWebglSupported] = useState(true);
+	// Videos start muted so autoplay isn't blocked by the browser;
+	// tapping the button is the user gesture that unlocks sound.
+	const [isMuted, setIsMuted] = useState(true);
 
 	useEffect(() => {
 		// Check WebGL support
@@ -608,7 +718,10 @@ export default function InfiniteGallery({
 	}
 
 	return (
-		<div className={className} style={{ ...style, touchAction: 'none' }}>
+		<div
+			className={className}
+			style={{ ...style, touchAction: 'none', position: 'relative' }}
+		>
 			<Canvas
 				camera={{ position: [0, 0, 0], fov: 55 }}
 				gl={{ antialias: true, alpha: true }}
@@ -617,8 +730,38 @@ export default function InfiniteGallery({
 					images={images}
 					fadeSettings={fadeSettings}
 					blurSettings={blurSettings}
+					isMuted={isMuted}
 				/>
 			</Canvas>
+
+			<button
+				type="button"
+				onClick={(event) => {
+					event.stopPropagation();
+					setIsMuted((prev) => !prev);
+				}}
+				aria-label={isMuted ? 'Unmute videos' : 'Mute videos'}
+				style={{
+					position: 'absolute',
+					bottom: '1rem',
+					right: '1rem',
+					zIndex: 10,
+					width: '2.75rem',
+					height: '2.75rem',
+					borderRadius: '9999px',
+					border: '1px solid rgba(0,0,0,0.15)',
+					background: 'rgba(255,255,255,0.85)',
+					backdropFilter: 'blur(6px)',
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					fontSize: '1.1rem',
+					cursor: 'pointer',
+					boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+				}}
+			>
+				{isMuted ? '🔇' : '🔊'}
+			</button>
 		</div>
 	);
 }
