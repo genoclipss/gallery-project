@@ -188,15 +188,30 @@ function useMediaTextures(items: { src: string; type: 'image' | 'video' }[]) {
 				video.src = item.src;
 				video.loop = true;
 				video.muted = true;
+				video.defaultMuted = true;
 				video.playsInline = true;
-				video.crossOrigin = 'anonymous';
+				// HTML attribute versions too — some mobile browsers (esp. iOS
+				// Safari) only respect these as attributes, not JS properties.
+				video.setAttribute('muted', '');
+				video.setAttribute('playsinline', '');
+				video.setAttribute('webkit-playsinline', '');
+				video.preload = 'auto';
+				// Videos used as WebGL texture sources must actually exist in
+				// the DOM on many mobile browsers, or they refuse to decode/play.
+				// Kept invisible and out of the way, but still "in" the page.
+				video.style.position = 'fixed';
+				video.style.width = '1px';
+				video.style.height = '1px';
+				video.style.opacity = '0';
+				video.style.pointerEvents = 'none';
+				document.body.appendChild(video);
+
 				video.play().catch(() => {
 					// Autoplay can be blocked until the user interacts with this video.
 				});
 				videos[i] = video;
 
 				const videoTexture = new THREE.VideoTexture(video);
-				videoTexture.colorSpace = THREE.SRGBColorSpace;
 				setTextures((prev) => {
 					const next = [...prev];
 					next[i] = videoTexture;
@@ -205,7 +220,6 @@ function useMediaTextures(items: { src: string; type: 'image' | 'video' }[]) {
 			} else {
 				loader.load(item.src, (tex) => {
 					if (cancelled) return;
-					tex.colorSpace = THREE.SRGBColorSpace;
 					setTextures((prev) => {
 						const next = [...prev];
 						next[i] = tex;
@@ -219,7 +233,10 @@ function useMediaTextures(items: { src: string; type: 'image' | 'video' }[]) {
 
 		return () => {
 			cancelled = true;
-			videos.forEach((video) => video?.pause());
+			videos.forEach((video) => {
+				video?.pause();
+				video?.remove();
+			});
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [items]);
@@ -438,7 +455,14 @@ function GalleryScene({
 	// Handle single click / tap -> toggle pause/unpause
 	const handleTogglePause = useCallback(() => {
 		setIsPaused((prev) => !prev);
-	}, []);
+		// Safety net: some mobile browsers still refuse autoplay even when
+		// muted. The first real tap/click is a user gesture, so retry here.
+		videosRef.current.forEach((video) => {
+			if (video && video.paused) {
+				video.play().catch(() => {});
+			}
+		});
+	}, [videosRef]);
 
 	useEffect(() => {
 		const canvas = document.querySelector('canvas');
